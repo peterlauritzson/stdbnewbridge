@@ -1,0 +1,612 @@
+/* ========================================
+   Kortbridge - Card Game Styles
+   BBO/IntoBridge-style layout
+   ======================================== */
+
+:root {
+  --table-green: #1a6b1a;
+  --table-dark: #0d3d0d;
+  --felt: #1e7a1e;
+  --card-bg: #fff;
+  --card-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --card-width: 70px;
+  --card-height: 100px;
+  --card-sm-width: 50px;
+  --card-sm-height: 72px;
+  --accent: #f0c040;
+  --red: #e94560;
+  --blue: #3a86ff;
+  --text: #f0f0f0;
+  --text-dim: #aaa;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #111;
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 600;
+}
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-primary { background: var(--accent); color: #111; }
+.btn-primary:hover:not(:disabled) { background: #ffd060; }
+.btn-secondary { background: #444; color: var(--text); }
+.btn-secondary:hover:not(:disabled) { background: #555; }
+.btn-danger { background: #c0392b; color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #e74c3c; }
+.btn-ai { background: #2980b9; color: #fff; }
+.btn-ai:hover:not(:disabled) { background: #3498db; }
+
+/* ========================================
+   Lobby
+   ======================================== */
+.lobby {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 24px;
+}
+.lobby h1 { font-size: 32px; margin-bottom: 4px; }
+.lobby .subtitle { color: var(--text-dim); margin-bottom: 24px; font-size: 14px; }
+
+.error-banner {
+  background: #332200;
+  border: 1px solid #665500;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: #ffcc44;
+}
+
+.lobby-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 32px;
+  background: #1a1a1a;
+  padding: 20px;
+  border-radius: 12px;
+}
+.lobby-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.lobby-form input,
+.lobby-form select {
+  padding: 8px 12px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background: #222;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.game-list h2 { margin-bottom: 12px; font-size: 20px; }
+.empty-state { color: var(--text-dim); font-style: italic; }
+
+.game-list ul { list-style: none; }
+.game-list-item {
+  background: #1a1a1a;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.game-info { display: flex; gap: 12px; align-items: center; flex: 1; }
+.game-id { font-weight: 700; }
+.game-phase {
+  background: #333;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.player-count { color: var(--text-dim); font-size: 13px; }
+.game-players { display: flex; gap: 6px; flex-wrap: wrap; }
+.player-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #333;
+}
+.player-badge.online { border-left: 3px solid #0f0; }
+.player-badge.offline { border-left: 3px solid #f00; opacity: 0.6; }
+.player-badge.ai { border-left: 3px solid #3498db; color: #3498db; }
+
+.rejoin-banner {
+  background: #1a3a1a;
+  border: 1px solid #2a6a2a;
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.game-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ========================================
+   Game Table (BBO-style)
+   ======================================== */
+.game-table {
+  display: grid;
+  grid-template-areas:
+    ".       top     ."
+    "left    trick   right"
+    ".       bottom  .";
+  grid-template-columns: 140px 1fr 140px;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at center, var(--felt) 0%, var(--table-dark) 100%);
+  position: relative;
+}
+
+.table-top    { grid-area: top;     display: flex; flex-direction: column; align-items: center; padding: 16px; z-index: 1; }
+.table-left   { grid-area: left;    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; z-index: 1; overflow: visible; }
+.table-middle { display: contents; }
+.table-right  { grid-area: right;   display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; z-index: 1; overflow: visible; }
+.table-bottom { grid-area: bottom;  display: flex; flex-direction: column; align-items: center; padding: 16px; background: rgba(0,0,0,0.25); z-index: 1; }
+
+/* ========================================
+   Floating Corner Panels
+   ======================================== */
+.panel {
+  position: absolute;
+  z-index: 100;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  transition: width 0.2s, height 0.2s;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+}
+.panel-header:hover { background: rgba(255, 255, 255, 0.12); }
+.panel-toggle {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: 8px;
+}
+.panel-body { padding: 10px; }
+.panel-collapsed .panel-body { display: none; }
+
+/* Scoreboard panel: top-right */
+.panel-scoreboard { top: 8px; right: 8px; width: 210px; }
+/* Bidding box panel: bottom-right */
+.panel-bidding { bottom: 8px; right: 8px; width: 210px; }
+/* Bid history panel: top-left */
+.panel-history { top: 8px; left: 8px; width: 210px; max-height: 260px; overflow-y: auto; }
+/* Last trick panel: bottom-left */
+.panel-lasttrick { bottom: 8px; left: 8px; width: 200px; }
+
+/* Back-to-lobby inside scoreboard panel */
+.btn-leave-panel {
+  width: 100%;
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+/* Last trick mini button */
+.last-trick-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.5);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.last-trick-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+.player-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.player-label-self { font-size: 15px; }
+.turn-indicator { color: #0f0; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ========================================
+   Cards
+   ======================================== */
+.card {
+  width: var(--card-width);
+  height: var(--card-height);
+  background: var(--card-bg);
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  position: relative;
+  user-select: none;
+  flex-shrink: 0;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.card-sm { width: var(--card-sm-width); height: var(--card-sm-height); }
+.card-sm .card-rank { font-size: 11px; }
+.card-sm .card-suit { font-size: 10px; }
+.card-sm .card-suit-large { font-size: 20px; }
+
+.card-clickable { cursor: pointer; }
+.card-clickable:hover { transform: translateY(-4px); box-shadow: 0 6px 16px rgba(0,0,0,0.4); }
+.card-selected { transform: translateY(-10px); box-shadow: 0 8px 20px rgba(240,192,64,0.5); border: 2px solid var(--accent); }
+.card-playable { opacity: 1; }
+.card-disabled { opacity: 0.5; }
+
+.card-corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+.card-corner-top { top: 4px; left: 6px; }
+.card-corner-bottom { bottom: 4px; right: 6px; transform: rotate(180deg); }
+.card-rank { font-size: 14px; font-weight: 700; }
+.card-suit { font-size: 12px; }
+.card-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.card-suit-large { font-size: 28px; }
+
+.card-back {
+  background: linear-gradient(135deg, #2a3a6a, #1a2040);
+  border: 2px solid #3a4a7a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-back-pattern { font-size: 36px; opacity: 0.4; }
+.card-sm .card-back-pattern { font-size: 24px; }
+
+/* ========================================
+   Hands
+   ======================================== */
+.hand-opponent {
+  display: flex;
+  gap: -20px;
+  align-items: center;
+}
+.hand-opponent .card { margin-left: -30px; }
+.hand-opponent .card:first-child { margin-left: 0; }
+.hand-count {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: rgba(0,0,0,0.4);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.hand-mine {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.hand-cards {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.suit-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.suit-group .card { margin-left: -16px; }
+.suit-group .card:first-of-type { margin-left: 0; }
+.suit-label {
+  font-size: 18px;
+  font-weight: 700;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+
+.hand-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ========================================
+   Trick Area
+   ======================================== */
+.trick-area {
+  grid-area: trick;
+  position: relative;
+  min-height: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.trick-empty {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 14px;
+}
+
+.trick-play {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.trick-pos-top    { top: 10px;  left: 50%; transform: translateX(-50%); }
+.trick-pos-bottom { bottom: 10px; left: 50%; transform: translateX(-50%); }
+.trick-pos-left   { left: 40px; top: 50%; transform: translateY(-50%); }
+.trick-pos-right  { right: 40px; top: 50%; transform: translateY(-50%); }
+
+.trick-player-name {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.card-pass {
+  background: #333;
+  border: 2px dashed #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-pass-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--red);
+  letter-spacing: 1px;
+}
+
+.trick-pass {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 13px;
+}
+.trick-cards {
+  display: flex;
+  gap: 2px;
+}
+.trick-winner .trick-player-name { color: var(--accent); font-weight: 700; }
+.trick-winner .card { border: 2px solid var(--accent); }
+
+/* ========================================
+   Bidding Box
+   ======================================== */
+.bidding-box {
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px;
+  padding: 12px;
+}
+.bidding-box h3 { margin-bottom: 8px; font-size: 15px; }
+.bidding-inactive { opacity: 0.6; }
+
+.bid-grid-scroll { max-height: 240px; overflow-y: auto; margin-bottom: 8px; }
+.bid-grid { display: flex; flex-direction: column; gap: 4px; }
+.bid-row { display: flex; gap: 3px; align-items: center; }
+.bid-spread { width: 20px; font-weight: 700; font-size: 13px; text-align: center; }
+.bid-btn {
+  width: 32px;
+  height: 28px;
+  padding: 2px;
+  font-size: 14px;
+  border-radius: 4px;
+  background: #2a2a2a;
+  color: var(--text);
+  border: 1px solid #444;
+  cursor: pointer;
+}
+.bid-btn:hover:not(:disabled) { background: #3a3a3a; }
+.bid-disabled { opacity: 0.3; cursor: default; }
+.btn-pass {
+  width: 100%;
+  padding: 8px;
+  background: #552222;
+  color: var(--text);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-pass:hover:not(:disabled) { background: #663333; }
+
+/* ========================================
+   Bid History
+   ======================================== */
+.bid-history {
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px;
+  padding: 12px;
+}
+.bid-history h4 { margin-bottom: 8px; font-size: 14px; }
+.bid-history table { width: 100%; font-size: 13px; }
+.bid-history td { padding: 2px 4px; }
+.bid-history tr:nth-child(even) { background: rgba(255,255,255,0.05); }
+
+/* ========================================
+   Scoreboard
+   ======================================== */
+.scoreboard {
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px;
+  padding: 12px;
+}
+.scoreboard-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 13px;
+}
+.scoreboard-row .label { color: var(--text-dim); }
+.scoreboard-row .value { font-weight: 700; }
+
+/* ========================================
+   Hand Result Overlay
+   ======================================== */
+.result-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+}
+.result-overlay-card {
+  background: #1a1a1a;
+  border-radius: 14px;
+  padding: 28px 36px;
+  min-width: 320px;
+  max-width: 400px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+  text-align: center;
+}
+.result-overlay-card h2 {
+  font-size: 22px;
+  margin-bottom: 16px;
+  color: var(--accent);
+}
+.result-overlay .result-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.result-overlay .result-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 2px 0;
+}
+.result-message {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+  justify-content: center !important;
+}
+.result-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* ========================================
+   Game Lobby (waiting room)
+   ======================================== */
+.game-table-lobby {
+  max-width: 500px;
+  margin: 60px auto;
+  text-align: center;
+}
+.game-table-lobby h2 { margin-bottom: 24px; }
+
+.seat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.seat-slot {
+  background: #1a1a1a;
+  border-radius: 10px;
+  padding: 16px;
+}
+.seat-name {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.seat-player { font-weight: 700; }
+.seat-player.online { color: #0f0; }
+.seat-player.offline { color: #f44; }
+.seat-player.ai { color: #3498db; }
+.seat-empty { color: var(--text-dim); font-style: italic; }
+
+.game-table-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.game-table-loading {
+  text-align: center;
+  margin-top: 100px;
+}
+
+/* ========================================
+   Game Over
+   ======================================== */
+.game-over {
+  max-width: 400px;
+  margin: 80px auto;
+  text-align: center;
+}
+.game-over h2 { margin-bottom: 20px; font-size: 28px; }
+.result-card {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.result-winner { font-size: 22px; font-weight: 700; color: var(--accent); margin-bottom: 16px; }
+.result-details { display: flex; flex-direction: column; gap: 6px; }
+.result-row { display: flex; justify-content: space-between; font-size: 14px; }
+
+/* .btn-leave removed — now uses .btn-leave-float */

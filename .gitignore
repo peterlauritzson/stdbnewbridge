@@ -1,0 +1,29 @@
+# Rust build artifacts
+server/target/
+game-logic/target/
+
+# Node
+client/node_modules/
+client/dist/
+client/dist-ssr/
+
+# SpacetimeDB generated TypeScript bindings
+client/src/module_bindings/
+
+# Cargo lock (workspace members)
+Cargo.lock
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
