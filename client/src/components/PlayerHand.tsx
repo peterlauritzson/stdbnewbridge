@@ -8,11 +8,12 @@ interface PlayerHandProps {
   isMyHand: boolean;
   playable?: boolean;
   ledSuit?: number | null;
+  isLeader?: boolean;
   onPlay?: (cardIds: number[]) => void;
   onPass?: () => void;
 }
 
-export function PlayerHand({ cards, isMyHand, playable, ledSuit, onPlay, onPass }: PlayerHandProps) {
+export function PlayerHand({ cards, isMyHand, playable, ledSuit, isLeader, onPlay, onPass }: PlayerHandProps) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const grouped = groupBySuit(cards);
 
@@ -99,16 +100,14 @@ export function PlayerHand({ cards, isMyHand, playable, ledSuit, onPlay, onPass 
 
       {playable && (
         <div className="hand-actions">
-          <button
-            className="btn btn-primary"
-            onClick={handlePlay}
-            disabled={selectedIds.size === 0}
-          >
+          <button className="btn btn-primary" onClick={handlePlay} disabled={selectedIds.size === 0}>
             Play {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
           </button>
-          <button className="btn btn-secondary" onClick={handlePass}>
-            Pass
-          </button>
+          {!isLeader && (
+            <button className="btn btn-secondary" onClick={handlePass}>
+              Pass
+            </button>
+          )}
         </div>
       )}
     </div>

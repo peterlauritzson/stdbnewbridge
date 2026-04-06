@@ -7,7 +7,7 @@ import { BiddingBox, BidHistory } from './BiddingBox';
 import { Scoreboard } from './Scoreboard';
 import { PHASE_LOBBY, PHASE_AUCTION, PHASE_PLAY, PHASE_FINISHED, SEAT_NAMES } from '../types';
 import type { TrickPlay } from '../types';
-import { trumpName } from '../lib/cardUtils';
+import { trumpName, groupBySuit, suitSymbol, suitColor, rankName } from '../lib/cardUtils';
 
 interface GameTableProps {
   gameId: bigint;
@@ -185,6 +185,7 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
           isMyHand={true}
           playable={!frozenTrick && !viewingLastTrick && gs.isMyTurn && game.phase === PHASE_PLAY}
           ledSuit={gs.currentTrick?.ledSuit}
+          isLeader={gs.mySeat != null && gs.currentTrick?.leaderSeat === gs.mySeat}
           onPlay={(cardIds) => actions.playCards(gameId, cardIds)}
           onPass={() => actions.playCards(gameId, [])}
         />
@@ -281,6 +282,32 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
                 </div>
               )}
             </div>
+
+            {/* Original dealt hands */}
+            <div className="result-hands">
+              {[0, 1, 2, 3].map(seat => {
+                const seatCards = gs.allCards.filter(c => c.ownerSeat === seat);
+                const grouped = groupBySuit(seatCards);
+                return (
+                  <div key={seat} className="result-hand">
+                    <div className="result-hand-label">{gs.seatLabels[seat] ?? SEAT_NAMES[seat]}</div>
+                    <div className="result-hand-suits">
+                      {[...grouped.entries()].map(([suit, cards]) => (
+                        <div key={suit} className="result-suit-line">
+                          <span className="result-suit-symbol" style={{ color: suitColor(suit) }}>
+                            {suitSymbol(suit)}
+                          </span>
+                          <span className="result-suit-cards">
+                            {cards.map(c => rankName(c.rank)).join(' ')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="result-actions">
               <button className="btn btn-primary" onClick={() => actions.nextHand(gameId)}>
                 Next Hand

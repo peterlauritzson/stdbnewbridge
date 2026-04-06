@@ -66,6 +66,32 @@ body {
 .lobby h1 { font-size: 32px; margin-bottom: 4px; }
 .lobby .subtitle { color: var(--text-dim); margin-bottom: 24px; font-size: 14px; }
 
+.ai-info {
+  margin-bottom: 20px;
+}
+.ai-info details {
+  background: #1a1a1a;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.ai-info summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+.ai-info ul {
+  margin-top: 8px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-info li strong { color: var(--accent); }
+
 .error-banner {
   background: #332200;
   border: 1px solid #665500;
@@ -543,6 +569,50 @@ body {
   display: flex;
   gap: 10px;
   justify-content: center;
+}
+
+/* Dealt hands in result overlay */
+.result-hands {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+  text-align: left;
+}
+.result-hand {
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.result-hand-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.result-hand-suits {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.result-suit-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.result-suit-symbol {
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.result-suit-cards {
+  color: var(--text);
+  letter-spacing: 1px;
 }
 
 /* ========================================

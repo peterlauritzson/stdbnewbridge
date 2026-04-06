@@ -146,8 +146,141 @@ fn is_ai_seat(ctx: &ReducerContext, game_id: u64, seat: u8) -> bool {
     ctx.db.ai_player().iter().any(|a| a.game_id == game_id && a.seat == seat)
 }
 
-fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick) -> Vec<u32> {
-    let mut hand: Vec<Card> = ctx.db.card().iter()
+// ---- AI Auction Logic ----
+
+/// High-card points: A=4, K=3, Q=2, J=1
+fn hcp(rank: u8) -> u8 {
+    match rank {
+        14 => 4, // Ace
+        13 => 3, // King
+        12 => 2, // Queen
+        11 => 1, // Jack
+        _ => 0,
+    }
+}
+
+/// Evaluate hand strength and pick a bid, or pass.
+fn ai_choose_bid(
+    ctx: &ReducerContext,
+    game_id: u64,
+    seat: u8,
+) -> (Option<i8>, Option<u8>) {
+    let hand: Vec<Card> = ctx.db.card().iter()
+        .filter(|c| c.game_id == game_id && c.owner_seat == seat && c.location == "hand")
+        .collect();
+
+    // Count HCP
+    let total_hcp: u8 = hand.iter().map(|c| hcp(c.rank)).sum();
+
+    // Count cards per suit
+    let mut suit_counts = [0u8; 4];
+    let mut suit_hcp = [0u8; 4];
+    for c in &hand {
+        suit_counts[c.suit as usize] += 1;
+        suit_hcp[c.suit as usize] += hcp(c.rank);
+    }
+
+    // Distribution points: each card beyond 4 in a suit = 1pt, void = 3, singleton = 2, doubleton = 1
+    let mut dist_pts: u8 = 0;
+    for &count in &suit_counts {
+        if count == 0 { dist_pts += 3; }
+        else if count == 1 { dist_pts += 2; }
+        else if count == 2 { dist_pts += 1; }
+        else if count > 4 { dist_pts += count - 4; }
+    }
+
+    let strength = total_hcp + dist_pts;
+
+    // Need decent strength to bid (roughly: 12+ to open)
+    if strength < 12 {
+        return (None, None);
+    }
+
+    // Find longest suit (prefer higher-ranked suit for ties)
+    let mut best_suit = 0u8;
+    for s in 0..4u8 {
+        if suit_counts[s as usize] > suit_counts[best_suit as usize]
+            || (suit_counts[s as usize] == suit_counts[best_suit as usize] && suit_hcp[s as usize] > suit_hcp[best_suit as usize])
+            || (suit_counts[s as usize] == suit_counts[best_suit as usize] && suit_hcp[s as usize] == suit_hcp[best_suit as usize] && s > best_suit)
+        {
+            best_suit = s;
+        }
+    }
+
+    // If no suit has 4+ cards, bid NT
+    let bid_suit: Option<u8> = if suit_counts[best_suit as usize] >= 4 {
+        Some(best_suit)
+    } else {
+        None // NT
+    };
+
+    // Spread based on strength:
+    // 12-15 → 1, 16-19 → 2, 20-23 → 3, 24-27 → 4, 28+ → 5
+    let spread = ((strength as i8 - 12) / 4 + 1).min(7);
+
+    // Check if this outranks the current high bid
+    let highest_bid: Option<Bid> = ctx.db.bid().iter()
+        .filter(|b| b.game_id == game_id && b.spread.is_some())
+        .max_by_key(|b| b.sequence);
+
+    if let Some(prev) = highest_bid {
+        if !types::bid_outranks(spread, bid_suit, prev.spread.unwrap(), prev.suit) {
+            // Can't outbid — pass
+            return (None, None);
+        }
+    }
+
+    (Some(spread), bid_suit)
+}
+
+// ---- AI Play Logic ----
+
+/// Get the current best play in the trick (highest-value non-pass play
+/// considering trump and led suit, like evaluate_trick but returns details).
+fn current_trick_winner(
+    ctx: &ReducerContext,
+    trick: &Trick,
+    game: &Game,
+) -> Option<(u8, u16, Option<u8>)> {
+    // Returns (winning_seat, winning_value, winning_suit)
+    let plays: Vec<TrickPlay> = ctx.db.trick_play().iter()
+        .filter(|tp| tp.trick_id == trick.trick_id && !tp.is_pass)
+        .collect();
+
+    if plays.is_empty() {
+        return None;
+    }
+
+    let trump = game.trump_suit;
+    let led = trick.led_suit;
+
+    let mut best: Option<&TrickPlay> = None;
+    for p in &plays {
+        let dominated = match best {
+            None => true,
+            Some(b) => {
+                let p_trump = trump.is_some() && p.play_suit == trump;
+                let b_trump = trump.is_some() && b.play_suit == trump;
+                let p_led = led.is_some() && p.play_suit == led;
+                let b_led = led.is_some() && b.play_suit == led;
+
+                if p_trump && !b_trump { true }
+                else if !p_trump && b_trump { false }
+                else if p_trump && b_trump { p.play_value > b.play_value || (p.play_value == b.play_value && p.sequence < b.sequence) }
+                else if p_led && !b_led { true }
+                else if !p_led && b_led { false }
+                else { p.play_value > b.play_value || (p.play_value == b.play_value && p.sequence < b.sequence) }
+            }
+        };
+        if dominated { best = Some(p); }
+    }
+
+    best.map(|b| (b.seat, b.play_value, b.play_suit))
+}
+
+/// Pick cards for the AI to play. Returns empty vec for a pass.
+fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, game: &Game) -> Vec<u32> {
+    let hand: Vec<Card> = ctx.db.card().iter()
         .filter(|c| c.game_id == game_id && c.owner_seat == seat && c.location == "hand")
         .collect();
 
@@ -155,18 +288,196 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick) 
         return vec![];
     }
 
-    // Must follow suit if possible
-    if let Some(led) = trick.led_suit {
-        let mut suited: Vec<&Card> = hand.iter().filter(|c| c.suit == led).collect();
-        if !suited.is_empty() {
-            suited.sort_by_key(|c| c.rank);
-            return vec![suited[0].card_id];
+    let is_leader = seat == trick.leader_seat;
+    let _partner = types::partner_seat(seat);
+    let trump = game.trump_suit;
+
+    // Group hand by suit
+    let mut by_suit: [Vec<&Card>; 4] = [vec![], vec![], vec![], vec![]];
+    for c in &hand {
+        by_suit[c.suit as usize].push(c);
+    }
+    // Sort each suit group by rank descending
+    for group in &mut by_suit {
+        group.sort_by(|a, b| b.rank.cmp(&a.rank));
+    }
+
+    // ----- LEADING -----
+    if is_leader {
+        return ai_lead(seat, &hand, &by_suit, trump);
+    }
+
+    // ----- FOLLOWING -----
+    let winner = current_trick_winner(ctx, trick, game);
+
+    // Check if partner is currently winning
+    let partner_winning = winner.as_ref().map_or(false, |(w, _, _)| types::same_team(seat, *w));
+
+    // Determine which suit was led
+    let led_suit = match trick.led_suit {
+        Some(s) => s,
+        None => {
+            // No suit led yet (shouldn't happen for non-leader, but be safe)
+            // Play lowest card
+            let mut all_sorted = hand.clone();
+            all_sorted.sort_by_key(|c| c.rank);
+            return vec![all_sorted[0].card_id];
+        }
+    };
+
+    let have_led_suit = !by_suit[led_suit as usize].is_empty();
+
+    if have_led_suit {
+        // Must follow suit
+        let suited = &by_suit[led_suit as usize]; // sorted rank desc
+
+        if partner_winning {
+            // Partner winning → PASS to save cards
+            return vec![];
+        }
+
+        // Can we beat the current winner?
+        if let Some((_, best_val, best_suit)) = winner {
+            let best_is_trump = trump.is_some() && best_suit == trump;
+            let we_are_in_led = true; // following suit, which is led suit
+
+            if best_is_trump && Some(led_suit) != trump {
+                // Current winner played trump, we're following non-trump led suit
+                // Can't beat trump with led suit → PASS
+                return vec![];
+            }
+
+            // Try to beat: play the cheapest card(s) that outvalue the current best
+            // For same suit, just need higher total value
+            // Try single card first
+            for c in suited.iter().rev() {
+                // reversed = ascending rank
+                if (c.rank as u16) > best_val && (we_are_in_led || !best_is_trump) {
+                    return vec![c.card_id];
+                }
+            }
+
+            // Try combo of 2+ cards to beat best_val
+            let combo = find_winning_combo(suited, best_val);
+            if let Some(ids) = combo {
+                return ids;
+            }
+
+            // Can't beat → PASS
+            return vec![];
+        }
+
+        // No winner yet (we're the first non-pass follower) — play lowest
+        return vec![suited.last().unwrap().card_id];
+    }
+
+    // ----- VOID IN LED SUIT -----
+
+    if partner_winning {
+        // Partner winning, we're void → PASS
+        return vec![];
+    }
+
+    // Can we trump?
+    if let Some(ts) = trump {
+        if !by_suit[ts as usize].is_empty() {
+            let trumps = &by_suit[ts as usize];
+            // Check if current winner is already trump
+            if let Some((_, best_val, best_suit)) = winner {
+                if best_suit == Some(ts) {
+                    // Winner has trump — need to over-trump
+                    for t in trumps.iter().rev() {
+                        if (t.rank as u16) > best_val {
+                            return vec![t.card_id];
+                        }
+                    }
+                    // Can't over-trump → PASS
+                    return vec![];
+                }
+            }
+            // Winner is non-trump or no winner: play lowest trump
+            return vec![trumps.last().unwrap().card_id];
         }
     }
 
-    // Play lowest card overall
-    hand.sort_by_key(|c| c.rank);
-    vec![hand[0].card_id]
+    // No trump available, void in led suit, partner not winning → PASS
+    // (discarding a good card is usually bad)
+    vec![]
+}
+
+/// Find the cheapest combo of cards from `suited` (sorted rank desc) whose total value > target.
+fn find_winning_combo(suited: &[&Card], target_value: u16) -> Option<Vec<u32>> {
+    // Try combos of increasing size (2..=suited.len())
+    // Use a simple greedy: pick lowest-ranked cards that sum above target
+    for size in 2..=suited.len() {
+        // Take the `size` lowest-ranked cards (from the end, since sorted desc)
+        let low_cards: Vec<&&Card> = suited.iter().rev().take(size).collect();
+        let total: u16 = low_cards.iter().map(|c| c.rank as u16).sum();
+        if total > target_value {
+            return Some(low_cards.iter().map(|c| c.card_id).collect());
+        }
+    }
+    None
+}
+
+/// AI leading logic: pick a strong opening play.
+fn ai_lead(_seat: u8, _hand: &[Card], by_suit: &[Vec<&Card>; 4], trump: Option<u8>) -> Vec<u32> {
+    // Strategy: lead from longest non-trump suit with high cards
+    // or lead trump if we have a dominant trump holding
+
+    // Find the best suit to lead
+    let mut best_suit_idx: Option<usize> = None;
+    let mut best_score: i16 = -1;
+
+    for s in 0..4usize {
+        if by_suit[s].is_empty() { continue; }
+
+        // Slightly prefer non-trump suits for leading
+        let is_trump = trump == Some(s as u8);
+        let length_bonus = by_suit[s].len() as i16;
+        let top_hcp: i16 = by_suit[s].iter().take(3).map(|c| hcp(c.rank) as i16).sum();
+        
+        // Score: HCP of top 3 + length bonus - penalty for trump (lead trump only if very strong)
+        let score = top_hcp * 2 + length_bonus - if is_trump { 4 } else { 0 };
+
+        if score > best_score {
+            best_score = score;
+            best_suit_idx = Some(s);
+        }
+    }
+
+    let suit_idx = best_suit_idx.unwrap_or(0);
+    let suit_cards = &by_suit[suit_idx]; // sorted rank desc
+
+    // Look for sequences to lead as combos (e.g. AK, KQJ, etc.)
+    let combo = find_top_sequence(suit_cards);
+    combo
+}
+
+/// Find a top sequence in the suit (consecutive ranks from the top).
+/// E.g., [A, K, Q, 9, 5] → returns [A, K, Q] as a combo.
+fn find_top_sequence(cards: &[&Card]) -> Vec<u32> {
+    if cards.is_empty() {
+        return vec![];
+    }
+
+    let mut seq = vec![cards[0].card_id];
+    for i in 1..cards.len() {
+        if cards[i - 1].rank == cards[i].rank + 1 {
+            seq.push(cards[i].card_id);
+        } else {
+            break;
+        }
+    }
+
+    // Only lead combo if it's actually strong (top card is 10+, i.e. honors)
+    // Otherwise just lead the highest single card
+    if seq.len() >= 2 && cards[0].rank >= 10 {
+        seq
+    } else {
+        // Lead highest card from this suit
+        vec![cards[0].card_id]
+    }
 }
 
 fn run_ai_loop(ctx: &ReducerContext, game_id: u64) {
@@ -186,12 +497,12 @@ fn run_ai_loop(ctx: &ReducerContext, game_id: u64) {
         }
 
         if game.phase == types::PHASE_AUCTION {
-            // AI always passes
-            internal_place_bid(ctx, game_id, game.turn_seat, None, None);
+            let (spread, suit) = ai_choose_bid(ctx, game_id, game.turn_seat);
+            internal_place_bid(ctx, game_id, game.turn_seat, spread, suit);
         } else if game.phase == types::PHASE_PLAY {
             let trick = ctx.db.trick().trick_id().find(&game.current_trick_id)
                 .expect("Trick not found for AI play");
-            let card_ids = ai_select_cards(ctx, game_id, game.turn_seat, &trick);
+            let card_ids = ai_select_cards(ctx, game_id, game.turn_seat, &trick, &game);
             internal_play_cards(ctx, game_id, game.turn_seat, card_ids);
         } else {
             return;
@@ -592,6 +903,11 @@ fn internal_play_cards(ctx: &ReducerContext, game_id: u64, seat: u8, card_ids: V
         .expect("Current trick not found");
 
     let is_pass = card_ids.is_empty();
+
+    // Leader of the trick must play at least one card
+    if is_pass {
+        assert!(seat != trick.leader_seat, "Leader must play at least one card");
+    }
 
     let play_suit: Option<u8>;
     let play_value: u16;

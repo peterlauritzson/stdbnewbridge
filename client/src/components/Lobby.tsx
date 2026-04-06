@@ -31,6 +31,18 @@ export function Lobby({ onJoinGame }: LobbyProps) {
       <h1>🃏 Kortbridge</h1>
       <p className="subtitle">A Swedish Bridge-like Card Game</p>
 
+      <div className="ai-info">
+        <details>
+          <summary>🤖 About AI Players</summary>
+          <ul>
+            <li><strong>Auction:</strong> Bids based on hand strength (HCP + distribution). Needs 12+ points to open. Passes with weak hands.</li>
+            <li><strong>Leading:</strong> Leads from its strongest suit, playing top sequences as combos (e.g. AKQ together).</li>
+            <li><strong>Following:</strong> Passes when partner is winning. Only plays to beat the current winner — passes otherwise to save cards.</li>
+            <li><strong>Trumping:</strong> Trumps in when void in led suit and can win. Won't waste trump if it can't over-trump.</li>
+          </ul>
+        </details>
+      </div>
+
       {state.error && (
         <div className="error-banner">
           <strong>Note:</strong> {state.error}
