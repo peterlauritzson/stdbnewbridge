@@ -21,6 +21,14 @@ const SUIT_COLORS: Record<number, string> = {
   [SPADES]: '#1a1a2e',
 };
 
+/** Bright colors for dark backgrounds (bid history, trick labels, etc.) */
+const SUIT_COLORS_BRIGHT: Record<number, string> = {
+  [CLUBS]: '#44bb44',
+  [DIAMONDS]: '#ff8833',
+  [HEARTS]: '#e94560',
+  [SPADES]: '#6699ff',
+};
+
 const RANK_NAMES: Record<number, string> = {
   2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
   9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A',
@@ -36,6 +44,10 @@ export function suitName(suit: number): string {
 
 export function suitColor(suit: number): string {
   return SUIT_COLORS[suit] ?? '#333';
+}
+
+export function suitColorBright(suit: number): string {
+  return SUIT_COLORS_BRIGHT[suit] ?? '#aaa';
 }
 
 export function rankName(rank: number): string {

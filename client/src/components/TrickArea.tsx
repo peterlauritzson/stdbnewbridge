@@ -1,6 +1,7 @@
 import type { TrickPlay, Card } from '../types';
 import { SEAT_NAMES } from '../types';
 import { CardView } from './CardView';
+import { suitSymbol, suitColorBright } from '../lib/cardUtils';
 
 interface TrickAreaProps {
   plays: TrickPlay[];
@@ -40,15 +41,24 @@ export function TrickArea({ plays, allCards, relativeSeats, seatLabels, winnerSe
             <span className="trick-player-name">{seatLabels[play.seat] ?? SEAT_NAMES[play.seat]}</span>
             {play.isPass ? (
               <div className="trick-cards">
-                <div className="card card-sm card-pass">
-                  <span className="card-pass-label">PASS</span>
+                <div className="trick-card-row">
+                  <div className="card card-sm card-pass">
+                    <span className="card-pass-label">PASS</span>
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="trick-cards">
-                {playCards.map(card => (
-                  <CardView key={card.cardId} card={card} small />
-                ))}
+                {playCards.length >= 1 && (
+                  <div className="combo-value" style={{ color: suitColorBright(playCards[0].suit) }}>
+                    {playCards.reduce((sum, c) => sum + c.rank, 0)}{suitSymbol(playCards[0].suit)}
+                  </div>
+                )}
+                <div className="trick-card-row">
+                  {playCards.map(card => (
+                    <CardView key={card.cardId} card={card} small />
+                  ))}
+                </div>
               </div>
             )}
           </div>

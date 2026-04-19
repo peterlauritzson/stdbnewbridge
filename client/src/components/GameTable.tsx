@@ -5,9 +5,10 @@ import { PlayerHand } from './PlayerHand';
 import { TrickArea } from './TrickArea';
 import { BiddingBox, BidHistory } from './BiddingBox';
 import { Scoreboard } from './Scoreboard';
+import { HandReplay } from './HandReplay';
 import { PHASE_LOBBY, PHASE_AUCTION, PHASE_PLAY, PHASE_FINISHED, SEAT_NAMES } from '../types';
 import type { TrickPlay } from '../types';
-import { trumpName, groupBySuit, suitSymbol, suitColor, rankName } from '../lib/cardUtils';
+import { trumpName, groupBySuit, suitSymbol, suitColorBright, rankName } from '../lib/cardUtils';
 
 interface GameTableProps {
   gameId: bigint;
@@ -32,6 +33,7 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
   const [historyOpen, setHistoryOpen] = useState(true);
   // Last trick viewer
   const [showLastTrick, setShowLastTrick] = useState(false);
+  const [showReplay, setShowReplay] = useState(false);
   const lastCompletedTrickRef = useRef<{
     plays: TrickPlay[];
     leaderSeat?: number;
@@ -77,6 +79,15 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
   }
 
   const game = gs.currentGame;
+
+  const handleLeave = () => {
+    const isInProgress = game.phase === PHASE_AUCTION || game.phase === PHASE_PLAY;
+    if (isInProgress) {
+      if (!confirm('Abort the game? This will end it for all players.')) return;
+    }
+    actions.leaveGame(gameId);
+    onLeave();
+  };
 
   // Finished — don't return early, we'll show overlay on game table
 
@@ -156,7 +167,7 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
       <div className="table-middle">
         <div className="table-left">
           <div className="player-label">{gs.seatLabels[left]}</div>
-          <PlayerHand cards={opponentCards(left)} isMyHand={false} />
+          <PlayerHand cards={opponentCards(left)} isMyHand={false} vertical />
         </div>
 
         <TrickArea
@@ -170,7 +181,7 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
 
         <div className="table-right">
           <div className="player-label">{gs.seatLabels[right]}</div>
-          <PlayerHand cards={opponentCards(right)} isMyHand={false} />
+          <PlayerHand cards={opponentCards(right)} isMyHand={false} vertical />
         </div>
       </div>
 
@@ -201,8 +212,8 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
         </div>
         <div className="panel-body">
           <Scoreboard game={game} seatLabels={gs.seatLabels} />
-          <button className="btn btn-secondary btn-leave-panel" onClick={onLeave}>
-            Back to Lobby
+          <button className="btn btn-secondary btn-leave-panel" onClick={handleLeave}>
+            {game.phase === PHASE_AUCTION || game.phase === PHASE_PLAY ? 'Abort Game' : 'Back to Lobby'}
           </button>
         </div>
       </div>
@@ -294,7 +305,7 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
                     <div className="result-hand-suits">
                       {[...grouped.entries()].map(([suit, cards]) => (
                         <div key={suit} className="result-suit-line">
-                          <span className="result-suit-symbol" style={{ color: suitColor(suit) }}>
+                          <span className="result-suit-symbol" style={{ color: suitColorBright(suit) }}>
                             {suitSymbol(suit)}
                           </span>
                           <span className="result-suit-cards">
@@ -312,12 +323,28 @@ export function GameTable({ gameId, onLeave }: GameTableProps) {
               <button className="btn btn-primary" onClick={() => actions.nextHand(gameId)}>
                 Next Hand
               </button>
-              <button className="btn btn-secondary" onClick={onLeave}>
+              <button className="btn btn-secondary" onClick={() => setShowReplay(true)}>
+                Replay Hand
+              </button>
+              <button className="btn btn-secondary" onClick={() => { actions.leaveGame(gameId); onLeave(); }}>
                 Back to Lobby
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Hand Replay overlay */}
+      {showReplay && (
+        <HandReplay
+          allCards={gs.allCards}
+          tricks={state.tricks.filter(t => t.gameId === gameId)}
+          trickPlays={state.trickPlays.filter(tp => tp.gameId === gameId)}
+          seatLabels={gs.seatLabels}
+          relativeSeats={gs.relativeSeats}
+          trump={game.trumpSuit ?? null}
+          onClose={() => setShowReplay(false)}
+        />
       )}
 
     </div>

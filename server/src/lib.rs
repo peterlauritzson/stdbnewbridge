@@ -289,7 +289,6 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, 
     }
 
     let is_leader = seat == trick.leader_seat;
-    let _partner = types::partner_seat(seat);
     let trump = game.trump_suit;
 
     // Group hand by suit
@@ -304,11 +303,18 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, 
 
     // ----- LEADING -----
     if is_leader {
-        return ai_lead(seat, &hand, &by_suit, trump);
+        return ai_lead(seat, &hand, &by_suit, trump, game);
     }
 
     // ----- FOLLOWING -----
     let winner = current_trick_winner(ctx, trick, game);
+
+    // How many cards did the current winning play use?
+    let winner_card_count: usize = ctx.db.trick_play().iter()
+        .filter(|tp| tp.trick_id == trick.trick_id && !tp.is_pass)
+        .map(|tp| tp.card_ids.len())
+        .max()
+        .unwrap_or(1);
 
     // Check if partner is currently winning
     let partner_winning = winner.as_ref().map_or(false, |(w, _, _)| types::same_team(seat, *w));
@@ -317,8 +323,6 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, 
     let led_suit = match trick.led_suit {
         Some(s) => s,
         None => {
-            // No suit led yet (shouldn't happen for non-leader, but be safe)
-            // Play lowest card
             let mut all_sorted = hand.clone();
             all_sorted.sort_by_key(|c| c.rank);
             return vec![all_sorted[0].card_id];
@@ -339,31 +343,48 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, 
         // Can we beat the current winner?
         if let Some((_, best_val, best_suit)) = winner {
             let best_is_trump = trump.is_some() && best_suit == trump;
-            let we_are_in_led = true; // following suit, which is led suit
 
             if best_is_trump && Some(led_suit) != trump {
-                // Current winner played trump, we're following non-trump led suit
-                // Can't beat trump with led suit → PASS
+                // Current winner played trump, we're following non-trump → can't beat
                 return vec![];
             }
 
-            // Try to beat: play the cheapest card(s) that outvalue the current best
-            // For same suit, just need higher total value
-            // Try single card first
+            // ECONOMY CHECK: decide max cards we're willing to spend.
+            // Each trick = 1 point, so spending N cards to win 1 trick costs
+            // us N-1 potential future tricks. Only spend more cards than the
+            // opponent if we can do it cheaply.
+            let max_cards_to_spend: usize = if winner_card_count >= 4 {
+                // Opponent dumped 4+ cards for 1 trick — let them have it.
+                // Only beat if we have a single card that tops it.
+                1
+            } else if winner_card_count == 3 {
+                // 3-card combo: only beat with 1 card, maybe 2 if cheap
+                // (cheapest 2 must sum above target)
+                1
+            } else if winner_card_count == 2 {
+                // 2-card play: spend up to 2 cards
+                2
+            } else {
+                // Single card: spend up to 2 cards
+                2
+            };
+
+            // Try single card first (cheapest that beats)
             for c in suited.iter().rev() {
-                // reversed = ascending rank
-                if (c.rank as u16) > best_val && (we_are_in_led || !best_is_trump) {
+                if (c.rank as u16) > best_val {
                     return vec![c.card_id];
                 }
             }
 
-            // Try combo of 2+ cards to beat best_val
-            let combo = find_winning_combo(suited, best_val);
-            if let Some(ids) = combo {
-                return ids;
+            // Try combo only if allowed by economy
+            if max_cards_to_spend >= 2 {
+                let combo = find_winning_combo(suited, best_val, max_cards_to_spend);
+                if let Some(ids) = combo {
+                    return ids;
+                }
             }
 
-            // Can't beat → PASS
+            // Can't beat economically → PASS
             return vec![];
         }
 
@@ -374,7 +395,12 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, 
     // ----- VOID IN LED SUIT -----
 
     if partner_winning {
-        // Partner winning, we're void → PASS
+        return vec![];
+    }
+
+    // ECONOMY CHECK for trumping: don't trump a huge combo
+    // If opponent spent 3+ cards, let them have it (we save a trump for later)
+    if winner_card_count >= 3 {
         return vec![];
     }
 
@@ -382,7 +408,6 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, 
     if let Some(ts) = trump {
         if !by_suit[ts as usize].is_empty() {
             let trumps = &by_suit[ts as usize];
-            // Check if current winner is already trump
             if let Some((_, best_val, best_suit)) = winner {
                 if best_suit == Some(ts) {
                     // Winner has trump — need to over-trump
@@ -391,7 +416,6 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, 
                             return vec![t.card_id];
                         }
                     }
-                    // Can't over-trump → PASS
                     return vec![];
                 }
             }
@@ -400,17 +424,14 @@ fn ai_select_cards(ctx: &ReducerContext, game_id: u64, seat: u8, trick: &Trick, 
         }
     }
 
-    // No trump available, void in led suit, partner not winning → PASS
-    // (discarding a good card is usually bad)
     vec![]
 }
 
-/// Find the cheapest combo of cards from `suited` (sorted rank desc) whose total value > target.
-fn find_winning_combo(suited: &[&Card], target_value: u16) -> Option<Vec<u32>> {
-    // Try combos of increasing size (2..=suited.len())
-    // Use a simple greedy: pick lowest-ranked cards that sum above target
-    for size in 2..=suited.len() {
-        // Take the `size` lowest-ranked cards (from the end, since sorted desc)
+/// Find the cheapest combo of cards from `suited` (sorted rank desc)
+/// whose total value > target, using at most `max_size` cards.
+fn find_winning_combo(suited: &[&Card], target_value: u16, max_size: usize) -> Option<Vec<u32>> {
+    let limit = max_size.min(suited.len());
+    for size in 2..=limit {
         let low_cards: Vec<&&Card> = suited.iter().rev().take(size).collect();
         let total: u16 = low_cards.iter().map(|c| c.rank as u16).sum();
         if total > target_value {
@@ -420,10 +441,18 @@ fn find_winning_combo(suited: &[&Card], target_value: u16) -> Option<Vec<u32>> {
     None
 }
 
-/// AI leading logic: pick a strong opening play.
-fn ai_lead(_seat: u8, _hand: &[Card], by_suit: &[Vec<&Card>; 4], trump: Option<u8>) -> Vec<u32> {
-    // Strategy: lead from longest non-trump suit with high cards
-    // or lead trump if we have a dominant trump holding
+/// AI leading logic: conserve cards, prefer single-card leads.
+fn ai_lead(_seat: u8, hand: &[Card], by_suit: &[Vec<&Card>; 4], trump: Option<u8>, game: &Game) -> Vec<u32> {
+    let total_cards = hand.len();
+
+    // Endgame with very few cards: just lead our best single card
+    if total_cards <= 3 {
+        let mut best = &hand[0];
+        for c in hand {
+            if c.rank > best.rank { best = c; }
+        }
+        return vec![best.card_id];
+    }
 
     // Find the best suit to lead
     let mut best_suit_idx: Option<usize> = None;
@@ -432,13 +461,13 @@ fn ai_lead(_seat: u8, _hand: &[Card], by_suit: &[Vec<&Card>; 4], trump: Option<u
     for s in 0..4usize {
         if by_suit[s].is_empty() { continue; }
 
-        // Slightly prefer non-trump suits for leading
         let is_trump = trump == Some(s as u8);
         let length_bonus = by_suit[s].len() as i16;
         let top_hcp: i16 = by_suit[s].iter().take(3).map(|c| hcp(c.rank) as i16).sum();
-        
-        // Score: HCP of top 3 + length bonus - penalty for trump (lead trump only if very strong)
-        let score = top_hcp * 2 + length_bonus - if is_trump { 4 } else { 0 };
+
+        // Prefer suits with high-card strength + length;
+        // penalise leading trump (save it for later)
+        let score = top_hcp * 2 + length_bonus - if is_trump { 6 } else { 0 };
 
         if score > best_score {
             best_score = score;
@@ -446,38 +475,51 @@ fn ai_lead(_seat: u8, _hand: &[Card], by_suit: &[Vec<&Card>; 4], trump: Option<u
         }
     }
 
-    let suit_idx = best_suit_idx.unwrap_or(0);
-    let suit_cards = &by_suit[suit_idx]; // sorted rank desc
-
-    // Look for sequences to lead as combos (e.g. AK, KQJ, etc.)
-    let combo = find_top_sequence(suit_cards);
-    combo
-}
-
-/// Find a top sequence in the suit (consecutive ranks from the top).
-/// E.g., [A, K, Q, 9, 5] → returns [A, K, Q] as a combo.
-fn find_top_sequence(cards: &[&Card]) -> Vec<u32> {
-    if cards.is_empty() {
-        return vec![];
-    }
-
-    let mut seq = vec![cards[0].card_id];
-    for i in 1..cards.len() {
-        if cards[i - 1].rank == cards[i].rank + 1 {
-            seq.push(cards[i].card_id);
-        } else {
-            break;
+    // Also consider leading a low singleton to create a void
+    // (void = can trump later)
+    if trump.is_some() {
+        for s in 0..4usize {
+            if by_suit[s].len() == 1 && trump != Some(s as u8) {
+                let c = by_suit[s][0];
+                // Only worthwhile if we actually have trumps to exploit the void
+                let trump_count = trump.map_or(0, |t| by_suit[t as usize].len());
+                if trump_count >= 2 && c.rank <= 10 {
+                    // Lead the singleton low card to void ourselves
+                    return vec![c.card_id];
+                }
+            }
         }
     }
 
-    // Only lead combo if it's actually strong (top card is 10+, i.e. honors)
-    // Otherwise just lead the highest single card
-    if seq.len() >= 2 && cards[0].rank >= 10 {
-        seq
-    } else {
-        // Lead highest card from this suit
-        vec![cards[0].card_id]
+    let suit_idx = best_suit_idx.unwrap_or(0);
+    let suit_cards = &by_suit[suit_idx];
+
+    // CONSERVATIVE LEADING: almost always lead a single card.
+    // Rationale: each trick = 1 point regardless of cards played.
+    // Leading A alone: if it wins, we spent 1 card for 1 trick (great).
+    // Leading A-K (27 value): hard to beat, but we spent 2 cards for 1 trick.
+    // Leading A-K-Q (39): nearly unbeatable, but 3 cards for 1 trick (terrible).
+    //
+    // Only lead a 2-card combo (A-K) when:
+    //   - We have 6+ cards in the suit (plenty to spare)
+    //   - Top card is the Ace (rank 14)
+    //   - We're the declaring side and need to push through tricks
+    let is_declarer_side = game.declarer_seat
+        .map_or(false, |d| types::same_team(_seat, d));
+
+    let is_suit_trump = trump == Some(suit_idx as u8);
+
+    if suit_cards.len() >= 6
+        && suit_cards[0].rank == 14  // Ace
+        && suit_cards[1].rank == 13  // King
+        && is_declarer_side
+        && !is_suit_trump
+    {
+        return vec![suit_cards[0].card_id, suit_cards[1].card_id];
     }
+
+    // Default: lead single highest card from chosen suit
+    vec![suit_cards[0].card_id]
 }
 
 fn run_ai_loop(ctx: &ReducerContext, game_id: u64) {
@@ -611,16 +653,23 @@ pub fn leave_game(ctx: &ReducerContext, game_id: u64) {
         .expect("Not in a game");
     assert!(player.game_id == game_id, "Not in this game");
 
-    let game = ctx.db.game().game_id().find(&game_id)
+    let mut game = ctx.db.game().game_id().find(&game_id)
         .expect("Game not found");
-    assert!(game.phase == types::PHASE_LOBBY, "Cannot leave after game started");
 
     ctx.db.player().identity().delete(&ctx.sender());
+
+    // If game is in progress (auction or play), abort it
+    if game.phase == types::PHASE_AUCTION || game.phase == types::PHASE_PLAY {
+        game.phase = types::PHASE_FINISHED;
+        game.result = Some(format!("{} left — game aborted", player.name));
+        ctx.db.game().game_id().update(game);
+        log::info!("Game {} aborted because {} left", game_id, player.name);
+    }
 }
 
 #[reducer]
 pub fn delete_game(ctx: &ReducerContext, game_id: u64) {
-    let game = ctx.db.game().game_id().find(&game_id)
+    let _game = ctx.db.game().game_id().find(&game_id)
         .expect("Game not found");
 
     let human_players: Vec<Player> = ctx.db.player().iter()
@@ -628,15 +677,10 @@ pub fn delete_game(ctx: &ReducerContext, game_id: u64) {
         .collect();
 
     // Allow deletion if:
-    // - Game is in Lobby or Finished phase
     // - The caller is in the game, OR there are no human players
     let caller_in_game = human_players.iter().any(|p| p.identity == ctx.sender());
     let no_humans = human_players.is_empty();
 
-    assert!(
-        game.phase == types::PHASE_LOBBY || game.phase == types::PHASE_FINISHED,
-        "Cannot delete a game in progress"
-    );
     assert!(
         caller_in_game || no_humans,
         "Only a player in the game can delete it"

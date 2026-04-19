@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Card } from '../types';
-import { groupBySuit, suitSymbol, suitColor } from '../lib/cardUtils';
+import { groupBySuit, suitSymbol, suitColor, suitColorBright } from '../lib/cardUtils';
 import { CardView } from './CardView';
 
 interface PlayerHandProps {
   cards: Card[];
   isMyHand: boolean;
+  vertical?: boolean;
   playable?: boolean;
   ledSuit?: number | null;
   isLeader?: boolean;
@@ -13,9 +14,16 @@ interface PlayerHandProps {
   onPass?: () => void;
 }
 
-export function PlayerHand({ cards, isMyHand, playable, ledSuit, isLeader, onPlay, onPass }: PlayerHandProps) {
+export function PlayerHand({ cards, isMyHand, vertical, playable, ledSuit, isLeader, onPlay, onPass }: PlayerHandProps) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const grouped = groupBySuit(cards);
+
+  // Clear selection when the hand changes (new trick, cards played, etc.)
+  // or when playable state changes
+  const cardIdKey = cards.map(c => c.cardId).sort().join(',');
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [cardIdKey, ledSuit, playable]);
 
   // Determine which suit we must follow (if any)
   const mustFollowSuit = ledSuit != null && cards.some(c => c.suit === ledSuit)
@@ -65,7 +73,7 @@ export function PlayerHand({ cards, isMyHand, playable, ledSuit, isLeader, onPla
   if (!isMyHand) {
     // Show card backs for opponents
     return (
-      <div className="hand hand-opponent">
+      <div className={`hand ${vertical ? 'hand-opponent-vertical' : 'hand-opponent'}`}>
         {cards.map((_, i) => (
           <CardView key={i} faceDown small />
         ))}
@@ -100,6 +108,15 @@ export function PlayerHand({ cards, isMyHand, playable, ledSuit, isLeader, onPla
 
       {playable && (
         <div className="hand-actions">
+          {selectedIds.size >= 1 && (() => {
+            const selCards = cards.filter(c => selectedIds.has(c.cardId));
+            const total = selCards.reduce((sum, c) => sum + c.rank, 0);
+            return (
+              <span className="combo-value" style={{ color: suitColorBright(selCards[0].suit) }}>
+                {total}{suitSymbol(selCards[0].suit)}
+              </span>
+            );
+          })()}
           <button className="btn btn-primary" onClick={handlePlay} disabled={selectedIds.size === 0}>
             Play {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
           </button>

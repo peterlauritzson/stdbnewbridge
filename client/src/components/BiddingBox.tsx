@@ -1,4 +1,4 @@
-import { suitSymbol, trumpName } from '../lib/cardUtils';
+import { suitSymbol, suitColorBright, trumpName } from '../lib/cardUtils';
 import { CLUBS, DIAMONDS, HEARTS, SPADES } from '../types';
 import type { Bid } from '../types';
 
@@ -34,25 +34,30 @@ export function BiddingBox({ isMyTurn, currentHighBid, onBid, onPass }: BiddingB
       <h3>Auction</h3>
       <div className="bid-grid-scroll">
         <div className="bid-grid">
-          {spreads.map(spread => (
-            <div key={spread} className="bid-row">
-              <span className="bid-spread">{spread}</span>
-              {SUITS.map((suit, i) => {
-                const ok = isMyTurn && canBid(spread, suit, currentHighBid);
-                return (
-                  <button
-                    key={i}
-                    className={`btn bid-btn ${ok ? '' : 'bid-disabled'}`}
-                    disabled={!ok}
-                    onClick={() => onBid(spread, suit)}
-                    title={`${spread} ${trumpName(suit)}`}
-                  >
-                    {suit === null ? 'NT' : suitSymbol(suit)}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+          {spreads.map(spread => {
+            const anyBiddable = SUITS.some(suit => canBid(spread, suit, currentHighBid));
+            return (
+              <div key={spread} className={`bid-row ${!anyBiddable ? 'bid-row-exhausted' : ''}`}>
+                <span className="bid-spread">{spread}</span>
+                {SUITS.map((suit, i) => {
+                  const ok = isMyTurn && canBid(spread, suit, currentHighBid);
+                  const color = suit === null ? '#88cc44' : suitColorBright(suit);
+                  return (
+                    <button
+                      key={i}
+                      className={`btn bid-btn ${ok ? '' : 'bid-disabled'}`}
+                      disabled={!ok}
+                      onClick={() => onBid(spread, suit)}
+                      title={`${spread} ${trumpName(suit)}`}
+                      style={{ color: ok ? color : undefined }}
+                    >
+                      {suit === null ? 'NT' : suitSymbol(suit)}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
       <button
@@ -79,16 +84,27 @@ export function BidHistory({ bids, seatLabels }: BidHistoryProps) {
       <h4>Bid History</h4>
       <table>
         <tbody>
-          {bids.map(bid => (
-            <tr key={bid.bidId}>
-              <td>{seatLabels[bid.seat] ?? `Seat ${bid.seat}`}</td>
-              <td>
-                {bid.spread == null
-                  ? 'Pass'
-                  : `${bid.spread} ${trumpName(bid.suit ?? null)}`}
-              </td>
-            </tr>
-          ))}
+          {bids.map(bid => {
+            const isPass = bid.spread == null;
+            const color = isPass ? undefined : (bid.suit == null ? '#88cc44' : suitColorBright(bid.suit));
+            return (
+              <tr key={bid.bidId} className={isPass ? 'bid-row-pass' : ''}>
+                <td>{seatLabels[bid.seat] ?? `Seat ${bid.seat}`}</td>
+                <td>
+                  {isPass ? (
+                    <span className="bid-pass-label">Pass</span>
+                  ) : (
+                    <span className="bid-value" style={{ color }}>
+                      <strong>{bid.spread}</strong>{' '}
+                      <span className="bid-suit-icon">
+                        {bid.suit == null ? 'NT' : suitSymbol(bid.suit)}
+                      </span>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -191,17 +191,17 @@ body {
     ".       top     ."
     "left    trick   right"
     ".       bottom  .";
-  grid-template-columns: 140px 1fr 140px;
+  grid-template-columns: 100px 1fr 100px;
   grid-template-rows: auto 1fr auto;
-  min-height: 100vh;
+  height: 100vh;
   background: radial-gradient(ellipse at center, var(--felt) 0%, var(--table-dark) 100%);
   position: relative;
 }
 
 .table-top    { grid-area: top;     display: flex; flex-direction: column; align-items: center; padding: 16px; z-index: 1; }
-.table-left   { grid-area: left;    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; z-index: 1; overflow: visible; }
+.table-left   { grid-area: left;    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px; z-index: 1; overflow: visible; min-width: 0; }
 .table-middle { display: contents; }
-.table-right  { grid-area: right;   display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; z-index: 1; overflow: visible; }
+.table-right  { grid-area: right;   display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px; z-index: 1; overflow: visible; min-width: 0; }
 .table-bottom { grid-area: bottom;  display: flex; flex-direction: column; align-items: center; padding: 16px; background: rgba(0,0,0,0.25); z-index: 1; }
 
 /* ========================================
@@ -342,18 +342,32 @@ body {
    ======================================== */
 .hand-opponent {
   display: flex;
-  gap: -20px;
   align-items: center;
 }
 .hand-opponent .card { margin-left: -30px; }
 .hand-opponent .card:first-child { margin-left: 0; }
 .hand-count {
-  margin-left: 8px;
   font-size: 12px;
   color: var(--text-dim);
   background: rgba(0,0,0,0.4);
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+/* Vertical card layout for side opponents (LHO / RHO) */
+.hand-opponent-vertical {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.hand-opponent-vertical .card {
+  margin-left: 0;
+  margin-top: -55px;
+}
+.hand-opponent-vertical .card:first-child { margin-top: 0; }
+.hand-opponent-vertical .hand-count {
+  margin-left: 0;
+  margin-top: 4px;
 }
 
 .hand-mine {
@@ -444,7 +458,23 @@ body {
 }
 .trick-cards {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 2px;
+}
+.trick-card-row {
+  display: flex;
+  gap: 2px;
+}
+/* Combo value label */
+.combo-value {
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
 }
 .trick-winner .trick-player-name { color: var(--accent); font-weight: 700; }
 .trick-winner .card { border: 2px solid var(--accent); }
@@ -476,7 +506,9 @@ body {
   cursor: pointer;
 }
 .bid-btn:hover:not(:disabled) { background: #3a3a3a; }
-.bid-disabled { opacity: 0.3; cursor: default; }
+.bid-disabled { opacity: 0.25; cursor: default; filter: grayscale(1); color: #555 !important; }
+.bid-row-exhausted { opacity: 0.3; }
+.bid-row-exhausted .bid-spread { color: #555; }
 .btn-pass {
   width: 100%;
   padding: 8px;
@@ -498,9 +530,13 @@ body {
   padding: 12px;
 }
 .bid-history h4 { margin-bottom: 8px; font-size: 14px; }
-.bid-history table { width: 100%; font-size: 13px; }
-.bid-history td { padding: 2px 4px; }
+.bid-history table { width: 100%; font-size: 13px; border-collapse: collapse; }
+.bid-history td { padding: 4px 6px; }
 .bid-history tr:nth-child(even) { background: rgba(255,255,255,0.05); }
+.bid-row-pass td { opacity: 0.5; }
+.bid-pass-label { font-style: italic; color: var(--text-dim); }
+.bid-value { font-size: 14px; }
+.bid-suit-icon { font-size: 16px; font-weight: 700; }
 
 /* ========================================
    Scoreboard
@@ -680,3 +716,127 @@ body {
 .result-row { display: flex; justify-content: space-between; font-size: 14px; }
 
 /* .btn-leave removed — now uses .btn-leave-float */
+
+/* ========================================
+   Hand Replay (BBO-style)
+   ======================================== */
+.replay-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+}
+.replay-container {
+  background: #1a2a1a;
+  border-radius: 14px;
+  padding: 20px 24px;
+  min-width: 500px;
+  max-width: 700px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+}
+.replay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.replay-header h3 {
+  font-size: 16px;
+  color: var(--accent);
+  margin: 0;
+}
+.replay-close {
+  padding: 4px 10px;
+  font-size: 14px;
+}
+.replay-table {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.replay-middle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.replay-trick-area {
+  position: relative;
+  min-width: 200px;
+  min-height: 180px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 80, 0, 0.3);
+  border-radius: 10px;
+}
+.replay-hand {
+  text-align: center;
+}
+.replay-hand-left,
+.replay-hand-right {
+  width: 120px;
+  flex-shrink: 0;
+}
+.replay-seat-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.replay-tricks-won {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.replay-mini-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  font-size: 13px;
+}
+.replay-mini-hand-vertical {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.replay-suit-group {
+  display: inline-flex;
+  gap: 1px;
+  align-items: center;
+}
+.replay-rank {
+  color: var(--text);
+  font-size: 12px;
+  margin-left: 1px;
+}
+.replay-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.replay-controls .btn {
+  padding: 6px 14px;
+  font-size: 16px;
+  min-width: 40px;
+}
+.replay-step-info {
+  font-size: 13px;
+  color: var(--text-dim);
+  min-width: 80px;
+  text-align: center;
+}
+.replay-trump {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
